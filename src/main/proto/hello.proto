@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "net.biville.florent.riff.hello";
+option java_outer_classname = "HelloProto";
+
+package hello;
+
+service Hello {
+
+    rpc GetAges (stream Person) returns (stream Reply) {
+    }
+}
+
+message Person {
+    string name = 1;
+    string birth_date = 2;
+}
+
+message Reply {
+    string name = 1;
+    int64 age = 2;
+}
