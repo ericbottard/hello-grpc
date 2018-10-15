@@ -10,7 +10,11 @@ import (
 )
 
 func main() {
-	listener, err := net.Listen("tcp", "localhost:9999")
+	port := "9999"
+	if len(os.Args) > 1 {
+		port = os.Args[1]
+	}
+	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		panic(err)
 	}
