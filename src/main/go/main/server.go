@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/fbiville/hello-grpc/src/main/go"
 	"google.golang.org/grpc"
 	"net"
@@ -14,6 +15,7 @@ func main() {
 	if len(os.Args) > 1 {
 		port = os.Args[1]
 	}
+	fmt.Printf("starting at port %d", port)
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		panic(err)
