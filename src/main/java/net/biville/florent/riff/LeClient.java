@@ -27,7 +27,7 @@ public class LeClient {
     }
 
     public void start() {
-        StreamObserver<Person> ages = asyncStub.getAges(new StreamObserver<Reply>() {
+        StreamObserver<Reply> chelseaHandler = new StreamObserver<Reply>() {
             @Override
             public void onNext(Reply value) {
                 System.out.println(String.format("%s a %d ans", value.getName(), value.getAge()));
@@ -42,9 +42,14 @@ public class LeClient {
             public void onCompleted() {
 
             }
-        });
+        };
 
-        ages.onNext(Person.newBuilder().setBirthDate("1986-04-03").setName("Florent").build());
+        StreamObserver<Person> ages1 = asyncStub.getAges(chelseaHandler);
+        StreamObserver<Person> ages2 = asyncStub.getAges(chelseaHandler);
+
+        ages1.onNext(Person.newBuilder().setBirthDate("1986-04-03").setName("Florent").build());
+        ages2.onNext(Person.newBuilder().setBirthDate("1978-10-14").setName("Eric").build());
+        ages2.onNext(Person.newBuilder().setBirthDate("1984-06-05").setName("Dilek").build());
     }
 
     public static void main(String[] args) throws InterruptedException {
