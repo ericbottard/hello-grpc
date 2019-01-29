@@ -1,7 +1,11 @@
 package io.projectriff.invoker.streaming;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 import com.google.protobuf.ByteString;
 import reactor.core.publisher.Flux;
@@ -14,14 +18,24 @@ import org.springframework.core.codec.Encoder;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferFactory;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.http.codec.support.DefaultServerCodecConfigurer;
 import org.springframework.util.MimeType;
 
 public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 
 	private final Function fn;
 
+	private DataBufferFactory dbf = new DefaultDataBufferFactory();
+
+	private List<Encoder> encoders = new ArrayList<>();
+	private List<Decoder> decoders = new ArrayList<>();
+
 	public ReactorServerAdapter(Function fn) {
 		this.fn = fn; // Function<Flux<String> -> Flux<Integer>>
+
+
+		encoders.add(new ByteArrayEncoder());
+		decoders.add(new ByteArrayDecoder());
 	}
 
 	// RiffSignal -> demat -Flux"Propre"<RiffSignal>--> decode() -Flux<T == String> -> fn()
@@ -29,43 +43,55 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 	// Flux<Signal=N,C,E>
 	@Override
 	public Flux<Signal> invoke(Flux<Signal> request) {
+		Decoder decoder = new ByteArrayDecoder();
+		Encoder encoder = new ByteArrayEncoder();
 
-		// reactor -> 3.2.5 => switchOnFirst()
-//		return request.switchOnFirst((signal, r2) -> {
-//			System.out.println("WOOOOOOOOOOOOOOOOOOOOOO");
-//			if (signal.hasValue()) {
+		return Flux.defer(() -> {
+			AtomicReference<Marshalling> marshalling = new AtomicReference<>();
 
-				Flux<Signal> r2 = request;
+			Flux<Signal> riffSignalsAsFlux = request
+					.filter(setAndCheckMarshalling(marshalling)).log()
+					.map(ReactorServerAdapter::toReactorSignal)
+					.dematerialize();
 
-				Decoder decoder = new ByteArrayDecoder();
-				MimeType contentType = MimeType.valueOf("text/plain");
+			Flux<byte[]> userData = decoder.decode(
+					riffSignalsAsFlux.log().map(this::convertToDataBuffer),
+					ResolvableType.forClass(byte[].class), marshalling.get().contentType,
+					null);
 
-				Encoder encoder = new ByteArrayEncoder();
-				MimeType accept = MimeType.valueOf("text/plain");
+			Flux<?> result = userData.transform(fn);
 
-				DataBufferFactory dbf = new DefaultDataBufferFactory();
+			return encoder
+					.encode(result, dbf, ResolvableType.forClass(byte[].class), marshalling.get().accept, null).log()
+					.materialize()
+					.map(ReactorServerAdapter::toRiffSignal);
 
-				Flux<Signal> riffSignalsAsFlux = r2.log().map(ReactorServerAdapter::toReactorSignal)
-						.dematerialize();
+		});
 
-				Flux<byte[]> userData = decoder.decode(
-						riffSignalsAsFlux.log().map(s -> dbf.wrap(s.getNext().getPayload().asReadOnlyByteBuffer())),
-						ResolvableType.forClass(byte[].class), contentType,
-						null);
+	}
 
-				// userData.checkpoint().subscribe(d -> System.out.println("WTF " + d.getClass()),
-				// Throwable::printStackTrace);
-				Flux<?> result = userData.transform(fn);
+	private DataBuffer convertToDataBuffer(Signal s) {
+		return dbf.wrap(s.getNext().getPayload().asReadOnlyByteBuffer());
+	}
 
-				return encoder
-						.encode(result, dbf, ResolvableType.forClass(byte[].class), accept, null).log()
-						.materialize().map(ReactorServerAdapter::toRiffSignal);
-//			}
-//			else {
-//				return Flux.error(new RuntimeException("Missing Start frame"));
-//			}
-//		});
-
+	private Predicate<Signal> setAndCheckMarshalling(AtomicReference<Marshalling> marshalling) {
+		return s -> {
+			if (s.hasStart() && marshalling.get() == null) {
+				Marshalling m = new Marshalling(MimeType.valueOf(s.getStart().getContentType()),
+						MimeType.valueOf(s.getStart().getAccept()));
+				marshalling.set(m);
+				return false;
+			}
+			else if (!s.hasStart() && marshalling.get() != null) {
+				return true;
+			}
+			else if (s.hasStart() && marshalling.get() != null) {
+				throw new RuntimeException("Multiple Start signals seen");
+			}
+			else {
+				throw new RuntimeException("Multiple Start signals seen");
+			}
+		};
 	}
 
 	private static reactor.core.publisher.Signal<Signal> toReactorSignal(Signal signal) {
@@ -98,6 +124,17 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 			return Signal.newBuilder().setError(Error.newBuilder().build()).build();
 		default:
 			throw new RuntimeException("Unexpected riff signal type: " + signal);
+		}
+	}
+
+	private static class Marshalling {
+		final MimeType contentType;
+
+		final MimeType accept;
+
+		private Marshalling(MimeType contentType, MimeType accept) {
+			this.contentType = contentType;
+			this.accept = accept;
 		}
 	}
 
