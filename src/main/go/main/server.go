@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	port := "9999"
+	port := "8080"
 	if len(os.Args) > 1 {
 		port = os.Args[1]
 	}
