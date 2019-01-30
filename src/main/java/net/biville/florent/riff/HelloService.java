@@ -4,6 +4,7 @@ import io.grpc.stub.StreamObserver;
 import net.biville.florent.riff.hello.HelloGrpc;
 import net.biville.florent.riff.hello.Person;
 import net.biville.florent.riff.hello.Reply;
+import reactor.core.publisher.Flux;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;

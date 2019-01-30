@@ -19,7 +19,7 @@ public class Client {
 
 		ReactorRiffGrpc.ReactorRiffStub stub = ReactorRiffGrpc.newReactorStub(channel);
 		Flux<Signal> req = Flux.just(
-				Signal.newBuilder().setStart(Start.newBuilder().setContentType("text/plain").setAccept("text/plain").build()).build(),
+				Signal.newBuilder().setStart(Start.newBuilder().setContentType("text/plain").setAccept("application/json").build()).build(),
 				Signal.newBuilder().setNext(Next.newBuilder().setPayload(ByteString.copyFromUtf8("Hello")).build()).build(),
 				Signal.newBuilder().setComplete(Complete.newBuilder().build()).build()
 		);

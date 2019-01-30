@@ -31,7 +31,7 @@ public class ServerConfiguration {
 	}
 
 	@Bean
-	public Function<Flux<byte[]>, Flux<byte[]>> userFunction() {
-		return f -> f.map(bs -> ("" + new String(bs).length()).getBytes());
+	public Function<Flux<String>, Flux<Integer>> userFunction() {
+		return f -> f.map(String::length);
 	}
 }
