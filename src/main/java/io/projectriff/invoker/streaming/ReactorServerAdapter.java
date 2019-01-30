@@ -24,15 +24,17 @@ import org.springframework.util.MimeType;
 public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 
 	private final Function fn;
+	private final ResolvableType fnInputType;
 
 	private DataBufferFactory dbf = new DefaultDataBufferFactory();
 
 	private List<Encoder> encoders = new ArrayList<>();
+
 	private List<Decoder> decoders = new ArrayList<>();
 
 	public ReactorServerAdapter(Function fn) {
 		this.fn = fn; // Function<Flux<String> -> Flux<Integer>>
-
+		this.fnInputType = ResolvableType.forClass(byte[].class);
 
 		encoders.add(new ByteArrayEncoder());
 		decoders.add(new ByteArrayDecoder());
@@ -47,28 +49,56 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 		Encoder encoder = new ByteArrayEncoder();
 
 		return Flux.defer(() -> {
-			AtomicReference<Marshalling> marshalling = new AtomicReference<>();
+			try {
 
-			Flux<Signal> riffSignalsAsFlux = request
-					.filter(setAndCheckMarshalling(marshalling)).log()
-					.map(ReactorServerAdapter::toReactorSignal)
-					.dematerialize();
+				AtomicReference<Marshalling> marshalling = new AtomicReference<>();
 
-			Flux<byte[]> userData = decoder.decode(
-					riffSignalsAsFlux.log().map(this::convertToDataBuffer),
-					ResolvableType.forClass(byte[].class), marshalling.get().contentType,
-					null);
+				Flux<Signal> riffSignalsAsFlux = request.log()
+						.filter(setAndCheckMarshalling(marshalling))
+						.map(ReactorServerAdapter::toReactorSignal)
+						.dematerialize().log("DEMAT").cast(Signal.class);
+				Flux<DataBuffer> fluxOfBuffers = riffSignalsAsFlux.map(this::convertToDataBuffer);
 
-			Flux<?> result = userData.transform(fn);
+				Flux<?> objects = fluxOfBuffers.compose(this.decode(marshalling).andThen(fn).andThen(this.encode(marshalling)));
 
-			return encoder
-					.encode(result, dbf, ResolvableType.forClass(byte[].class), marshalling.get().accept, null).log()
-					.materialize()
-					.map(ReactorServerAdapter::toRiffSignal);
+				return objects.log("BEFORE")
+						.materialize().log("MAT")
+						.map(ReactorServerAdapter::toRiffSignal);
+			}
+			catch (Throwable throwable) {
+				throwable.printStackTrace(System.err);
+				return Flux.error(throwable);
+			}
 
 		});
 
 	}
+
+	private Function<Flux<DataBuffer>, Flux<Object>> decode(AtomicReference<Marshalling> marshalling) {
+		return db -> {
+			System.out.println("In decode");
+			return
+
+				decoders.get(0).decode(db, fnInputType, marshalling.get().contentType, null);};
+	}
+
+	private Function<Flux<Object>, Flux<DataBuffer>> encode(AtomicReference<Marshalling> marshalling) {
+		return os -> {
+			System.out.println(marshalling);
+			System.out.println(marshalling.get());
+			System.out.println(os);
+
+			return encoders
+				.get(0)
+				.encode(os, dbf, fnInputType,
+						marshalling
+								.get()
+								.accept, null);
+		};
+	}
+
+
+
 
 	private DataBuffer convertToDataBuffer(Signal s) {
 		return dbf.wrap(s.getNext().getPayload().asReadOnlyByteBuffer());
@@ -76,10 +106,12 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 
 	private Predicate<Signal> setAndCheckMarshalling(AtomicReference<Marshalling> marshalling) {
 		return s -> {
+			System.out.println("***************************");
 			if (s.hasStart() && marshalling.get() == null) {
+				System.out.println(s.getStart());
 				Marshalling m = new Marshalling(MimeType.valueOf(s.getStart().getContentType()),
 						MimeType.valueOf(s.getStart().getAccept()));
-				marshalling.set(m);
+				marshalling.compareAndSet(null, m);
 				return false;
 			}
 			else if (!s.hasStart() && marshalling.get() != null) {
@@ -89,7 +121,7 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 				throw new RuntimeException("Multiple Start signals seen");
 			}
 			else {
-				throw new RuntimeException("Multiple Start signals seen");
+				throw new RuntimeException("Should have seen Start but haven't yet");
 			}
 		};
 	}
