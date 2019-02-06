@@ -1,6 +1,7 @@
 package io.projectriff.invoker.streaming;
 
 import java.io.IOException;
+import java.time.Duration;
 
 import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
@@ -18,12 +19,20 @@ public class Client {
 
 
 		ReactorRiffGrpc.ReactorRiffStub stub = ReactorRiffGrpc.newReactorStub(channel);
+		Signal start = Signal.newBuilder().setStart(Start.newBuilder().setContentType("text/plain").setAccept("text/plain").build()).build();
 		Flux<Signal> req = Flux.just(
-				Signal.newBuilder().setStart(Start.newBuilder().setContentType("text/plain").setAccept("application/json").build()).build(),
-				Signal.newBuilder().setNext(Next.newBuilder().setPayload(ByteString.copyFromUtf8("Hello")).build()).build(),
-				Signal.newBuilder().setComplete(Complete.newBuilder().build()).build()
+				start,
+//				Signal.newBuilder().setNext(Next.newBuilder().setPayload(ByteString.copyFromUtf8("Hello")).putHeaders("Content-Type", "text/plain").build()).build(),
+//				Signal.newBuilder().setNext(Next.newBuilder().setPayload(ByteString.copyFromUtf8("\"riff\"")).putHeaders("Content-Type", "application/json").build()).build()
+				Signal.newBuilder().setNext(Next.newBuilder().setPayload(ByteString.copyFromUtf8("4")).putHeaders("Content-Type", "text/plain").build()).build(),
+				Signal.newBuilder().setNext(Next.newBuilder().setPayload(ByteString.copyFromUtf8("8")).putHeaders("Content-Type", "application/json").build()).build()
+				//Signal.newBuilder().setComplete(Complete.newBuilder().build()).build()
 		);
-		Flux<Signal> resp = stub.invoke(req);
+
+		Flux<Signal> numbers = Flux.interval(Duration.ofMillis(2000)).map(i -> i + 1).doOnNext(System.out::println)
+				.map(i -> Signal.newBuilder().setNext(Next.newBuilder().setPayload(ByteString.copyFromUtf8("" + i))
+						.putHeaders("Content-Type", "text/plain")).build());
+		Flux<Signal> resp = stub.invoke(Flux.just(start).concatWith( numbers));
 		resp.subscribe(System.out::println);
 
 		System.in.read();
