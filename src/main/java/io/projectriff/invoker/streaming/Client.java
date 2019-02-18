@@ -12,6 +12,10 @@ public class Client {
 
 	public static void main(String[] args) throws InterruptedException, IOException {
 
+//		ManagedChannel channel = ManagedChannelBuilder.forAddress("35.241.225.245", 80)
+//				.usePlaintext()
+//				.overrideAuthority("grpc.default.example.com")
+//				.build();
 		ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 8080)
 				.usePlaintext()
 				.overrideAuthority("localhost")

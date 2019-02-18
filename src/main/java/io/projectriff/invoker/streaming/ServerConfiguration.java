@@ -28,7 +28,10 @@ public class ServerConfiguration {
 //		AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(ServerConfiguration.class);
 		FunctionalSpringApplication fsa = new FunctionalSpringApplication(ServerConfiguration.class);
 		ConfigurableApplicationContext context = fsa.run();
-		System.in.read();
+		Object o = new Object();
+		synchronized (o) {
+			o.wait();
+		}
 	}
 
 	@Bean(initMethod = "start", destroyMethod = "shutdown")
